@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .core import Conflict, Store, article, markdown, scan
+from .config import load_env, public_model_config
 
 
 class Server(ThreadingHTTPServer):
@@ -61,8 +62,7 @@ class Handler(BaseHTTPRequestHandler):
             kind = {"/": "text/html", "/app.js": "text/javascript", "/style.css": "text/css"}[path]
             return self.reply((Path(__file__).parent / "static" / name).read_bytes(), kind=kind + "; charset=utf-8")
         if path == "/api/session":
-            return self.reply({"token": self.server.token,
-                "model_ready": all(os.environ.get(k) for k in ("SHILU_API_KEY", "SHILU_BASE_URL", "SHILU_MODEL"))})
+            return self.reply({"token": self.server.token, **public_model_config()})
         if self.headers.get("X-Shilu-Token") != self.server.token:
             return self.reply({"error": "Reload to establish a local session"}, 403)
         if path == "/api/projects":
@@ -146,7 +146,9 @@ def main():
     parser = argparse.ArgumentParser(description="Shilu Studio — local speech recap workbench")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--data-dir", default=os.environ.get("SHILU_DATA_DIR", "./workspace"))
+    parser.add_argument("--env-file", default=os.environ.get("SHILU_ENV_FILE", ".env"))
     args = parser.parse_args()
+    load_env(args.env_file)
     server = Server(("127.0.0.1", args.port), Store(Path(args.data_dir) / "shilu.sqlite3"))
     print("Shilu Studio: http://127.0.0.1:%d" % server.server_port, flush=True)
     try:

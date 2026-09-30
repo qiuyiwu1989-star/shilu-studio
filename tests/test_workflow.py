@@ -12,6 +12,27 @@ from urllib.request import Request, urlopen
 
 from shilu.core import Conflict, Store, article, generate, scan
 from shilu.__main__ import Server
+from shilu.config import load_env, model_config, public_model_config
+
+
+class ConfigTests(unittest.TestCase):
+    def test_private_env_loading_and_process_precedence(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'SHILU_MODEL': 'process-model'}, clear=True):
+            p = Path(tmp) / '.env'
+            p.write_text('SHILU_PROVIDER=ark\nSHILU_API_KEY="test-only-secret"\nSHILU_MODEL=file-model\nHOME=ignored\n')
+            load_env(p)
+            self.assertEqual(model_config()['model'], 'process-model')
+            self.assertNotIn('HOME', os.environ)
+            public = public_model_config()
+            self.assertTrue(public['model_ready'])
+            self.assertNotIn('test-only-secret', json.dumps(public))
+
+    def test_ark_defaults(self):
+        with patch.dict(os.environ, {'SHILU_PROVIDER': 'ark'}, clear=True):
+            config = model_config()
+            self.assertEqual(config['model'], 'deepseek-v4-1-flash-260910')
+            self.assertEqual(config['base'], 'https://ark.cn-beijing.volces.com/api/v3')
+            self.assertEqual(config['effort'], 'low')
 
 
 class WorkflowTests(unittest.TestCase):
@@ -104,6 +125,27 @@ class WorkflowTests(unittest.TestCase):
             response['choices'][0]['finish_reason'] = 'length'
             with self.assertRaises(ValueError):
                 generate(self.p, 'live')
+
+    def test_ark_reasoning_payload(self):
+        response = {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({'sections': [
+            {'title': '测试章节', 'body': '测试正文', 'source_ids': ['s1']}]})}}]}
+        sent = []
+        def fake(request, **kwargs):
+            sent.append(json.loads(request.data))
+            return io.BytesIO(json.dumps(response).encode())
+        with patch.dict(os.environ, {'SHILU_PROVIDER': 'ark', 'SHILU_API_KEY': 'test-only'}, clear=True), patch('shilu.core.urlopen', fake):
+            generate(self.p, 'live')
+        self.assertEqual(sent[0]['reasoning_effort'], 'low')
+        self.assertEqual(sent[0]['thinking'], {'type': 'enabled'})
+
+    def test_http_error_does_not_echo_private_upstream_body(self):
+        def fake(*args, **kwargs):
+            raise HTTPError('https://provider.example', 401, 'test-secret', {}, io.BytesIO(b'test-secret'))
+        with patch.dict(os.environ, {'SHILU_PROVIDER': 'ark', 'SHILU_API_KEY': 'test-secret'}, clear=True), patch('shilu.core.urlopen', fake):
+            with self.assertRaises(ValueError) as error:
+                generate(self.p, 'live')
+        self.assertIn('401', str(error.exception))
+        self.assertNotIn('test-secret', str(error.exception))
 
 
 class HttpTests(unittest.TestCase):

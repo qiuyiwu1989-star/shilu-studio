@@ -1,5 +1,5 @@
 'use strict';
-let token = '', current = null, dirty = false, busy = false, modelReady = false;
+let token = '', current = null, dirty = false, busy = false, modelReady = false, modelName = '';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const notify = text => { $('notice').textContent = text; };
@@ -38,7 +38,7 @@ function render(scan) {
   const p=current, sections=p.human.length?p.human:(p.engine?.sections||[]);
   $('work').innerHTML=`<div class="step">02 / 整理与复核</div><h1>${esc(p.config.title)}</h1><span class="tag">${p.review?'当前正文已复核':p.human.length?'人工正文已保存':'待整理'}</span> <span class="quiet">版本 ${p.revision} · 本机保存</span>
   <details class="card"><summary>场次信息与整理要求</summary>${fields(p.config)}</details>
-  <div class="actions"><button id="verbatim">按原文分段</button><button id="generate">AI 整理初稿</button><span class="quiet">${modelReady?'AI 将把本稿发送至你配置的模型服务':'AI 尚未配置 · 原文分段可离线使用'}</span></div>
+  <div class="actions"><button id="verbatim">按原文分段</button><button id="generate">AI 整理初稿</button><span class="quiet">${modelReady?'当前模型：'+esc(modelName):'AI 尚未配置 · 原文分段可离线使用'}</span></div>
   ${p.engine?`<p class="quiet">初稿来源：${p.engine.mode==='live'?'AI 整理 · '+esc(p.engine.model):'原文分段（未调用 AI）'}。${p.human.length?'重新生成的初稿单独保存。':''}</p><button id="adopt">将初稿载入编辑区</button>`:''}
   <div class="card"><h2>逐节整理</h2><p class="quiet">每节可以展开原稿核对。来源编号只能证明引用位置，内容忠实度需要你判断。</p><div id="sections"></div><button id="add">＋ 添加章节</button><div class="actions"><button class="primary" id="save">保存人工正文</button><button id="preview">预览已保存正文</button></div></div>
   <div class="card"><h2>检查提示</h2><div id="scan"></div><details><summary>全部原稿 · ${p.sources.length} 段</summary>${p.sources.map(s=>`<div class="source"><b>${s.id}</b>\n${esc(s.text)}</div>`).join('')}</details></div>
@@ -64,4 +64,4 @@ function download(blob,name){const u=URL.createObjectURL(blob),a=document.create
 $('new').onclick=()=>{if(!busy&&leave()){intake();run(list);notify('');}};
 $('import').onchange=e=>run(async()=>{if(!leave())return;const file=e.target.files[0];if(!file)return;const r=await api('/api/import',{project:JSON.parse(await file.text())});await load(r.project.id);notify('已导入为新稿件；原稿与人工正文保留，需要重新复核。');});
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
-run(async()=>{const s=await api('/api/session');token=s.token;modelReady=s.model_ready;intake();await list();});
+run(async()=>{const s=await api('/api/session');token=s.token;modelReady=s.model_ready;modelName=s.model;intake();await list();});
