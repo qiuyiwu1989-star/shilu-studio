@@ -43,3 +43,16 @@ MCP 没有代签复核、导出或发布工具。新候选不会改变已经审�
     python3 -m shilu.migrate_workshop --source-db /private/old/drafts.sqlite3 --data-dir /private/new --author "讲者"
 
 保留原稿、候选和人工正文；旧复核只作内部历史标记，迁入后一律重新复核。相同记录重复导入不会重复创建。旧 Markdown 原样保留，但本版通用 HTML 仍按纯文本章节显示，不承诺还原 Markdown 富文本排版。只能关联整份原稿，不伪造逐段来源映射。超过本应用长度/段落限制的记录明确返回 not_imported；迁移前保留备份，核对报告后再切换。
+
+## 个人规范 profile
+服务和工作台进程设置 SHILU_PROFILE_PATH 指向同一份私有 UTF-8 Markdown。get_module_context 返回合并后的 text、version 和 profile_version；create_curation 将规则快照保存到项目，既有版本校验会阻止规则变化后沿用旧稿导出。未配置时仍使用通用规范；已配置但缺失或为空时明确失败，不静默降级。路径本身不向 Agent 返回。部署时把个人文件作为私有配置提供，不提交真实个人材料到通用仓库。
+
+## 单场 Agent 候选
+
+`get_module_context.recap` 提供单场 skill。`create_recap(config, transcript)` 保存原始逐字稿和规则快照；`get_project` 可接手；`submit_recap(project_id, revision, sections)` 只写候选，保留旧候选及人工稿；`validate_recap` 检查来源编号。sections 含 title、body、source_ids。创建后使用返回 revision，不猜测固定初始值。单场目前保留规则快照但规则更新不自动阻断复核/导出；跨场稿有规则及来源变化阻断。
+
+## 公开来源更新
+
+`python3 -m shilu.sync_public --bundle /private/speaking-sources.json --data-dir /private/workspace` 事务同步公开快照。它只管理此前由该同步器登记的来源，移除时保留历史版本，其他手工来源不删除。变化会使引用旧版本的跨场稿待复核。模块上下文返回 public_sync，可检查最近同步时间、内容hash和受影响项目。
+
+共享部署、人工审稿入口及备份见 [REMOTE-SSH.md](REMOTE-SSH.md)，审核后导出见 [RELEASE.md](RELEASE.md)。

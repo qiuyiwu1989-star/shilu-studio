@@ -83,7 +83,17 @@ def render(title,blocks,refs):
 def skill_context():
     from pathlib import Path
     text=(Path(__file__).parent/'skills/cross-event-writing/SKILL.md').read_text(encoding='utf-8')
-    return {'name':'cross-event-writing','text':text,'version':digest(text)}
+    import os
+    profile_path=os.environ.get('SHILU_PROFILE_PATH')
+    profile=None
+    if profile_path:
+        try: profile=Path(profile_path).read_text(encoding='utf-8')
+        except (OSError,UnicodeError): fail('PROFILE_UNAVAILABLE')
+        if not profile.strip(): fail('EMPTY_PROFILE')
+        text+='\n\n# Personal editorial profile\n\n'+profile
+    result={'name':'cross-event-writing','text':text,'version':digest(text)}
+    if profile is not None: result['profile_version']=digest(profile)
+    return result
 
 def review_payload(p):
     value=[p['config'],p['human']]

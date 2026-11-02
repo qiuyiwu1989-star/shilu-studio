@@ -1,8 +1,9 @@
 """Local stdio MCP sharing the human workbench database. No review/publish tools."""
 import argparse,json,os,sys
 from pathlib import Path
-from .core import Store
+from .core import Store, validate_sections
 from .curation import skill_context
+from .sync_public import freshness
 
 STR={'type':'string'}
 SOURCE={'type':'object','properties':{**{k:STR for k in ['id','url','title','date','occasion']},
@@ -21,6 +22,16 @@ SPECS={
  'submit_curation':({'project_id':STR,'revision':{'type':'integer','minimum':1},'blocks':{'type':'array','items':BLOCK}},['project_id','revision','blocks'],'Submit candidate blocks with optimistic revision control; never overwrite human text.'),
  'validate_curation':({'project_id':STR,'candidate':{'type':'boolean'}},['project_id'],'Validate saved human blocks or candidate against current registered source heads and writing rules.')
 }
+CONFIG={'type':'object','properties':{k:STR for k in ['title','author','date','occasion','audience','scope_note','anonymize_note']},'required':['title','author'],'additionalProperties':False}
+SECTION={'type':'object','properties':{'title':STR,'body':STR,'source_ids':{'type':'array','items':STR}},'required':['title','body','source_ids'],'additionalProperties':False}
+SPECS.update({
+ 'create_recap':({'config':CONFIG,'transcript':STR},['config','transcript'],'Create a single-event recap from original transcript; read sources before drafting.'),
+ 'submit_recap':({'project_id':STR,'revision':{'type':'integer','minimum':1},'sections':{'type':'array','items':SECTION}},['project_id','revision','sections'],'Submit an Agent candidate only; human draft and review remain unchanged.'),
+ 'validate_recap':({'project_id':STR},['project_id'],'Validate candidate source identifiers; human fidelity review is still required.')
+})
+def recap_context():
+    return {'skill':(Path(__file__).parent/'skills/single-event-recap/SKILL.md').read_text(), 'workflow':['create_recap','get_project','submit_recap','validate_recap','human workbench: adopt, save, review, export']}
+
 def call(store,name,args):
     if name not in SPECS:raise ValueError('UNKNOWN_TOOL')
     props,required,_=SPECS[name]
@@ -29,7 +40,27 @@ def call(store,name,args):
         typ=props[k]['type']
         if (typ=='string' and not isinstance(v,str)) or (typ=='integer' and type(v)!=int) or (typ=='boolean' and type(v)!=bool) or (typ=='array' and not isinstance(v,list)) or (typ=='object' and not isinstance(v,dict)):
             raise ValueError('INVALID_ARGUMENTS')
-    if name=='get_module_context':return dict(skill_context=skill_context(),workflow=['register_source','search_sources','get_source','create_curation','submit_curation','validate_curation','human workbench: save, review, export'],boundary='Local stdio; caller snapshots; no automatic review or publication.')
+    if name=='get_module_context':return dict(public_sync=freshness(store),recap=recap_context(),skill_context=skill_context(),workflow=['register_source','search_sources','get_source','create_curation','submit_curation','validate_curation','human workbench: save, review, export'],boundary='Local stdio; caller snapshots; no automatic review or publication.')
+    if name=='create_recap':
+        if set(args['config'])-set(CONFIG['properties']):raise ValueError('INVALID_ARGUMENTS')
+        result=store.create(args['config'],args['transcript'])
+        context=recap_context()
+        context['rules_change_policy']='Snapshot retained; single-event rule changes do not currently block review/export.'
+        return store.mutate(result['id'],result['revision'],lambda p:p.update(skill_context=context,candidate_history=[]))
+    if name=='submit_recap':
+        def change(p):
+            if p.get('kind')=='curation':raise ValueError('Expected single-event recap')
+            if any(not isinstance(s,dict) or set(s)-set(SECTION['properties']) for s in args['sections']):raise ValueError('INVALID_ARGUMENTS')
+            sections=validate_sections(args['sections'],{x['id'] for x in p['sources']})
+            if p.get('engine'):
+                p.setdefault('candidate_history',[]).append({'revision':p['revision'],'candidate':p['engine']})
+            p['engine']={'mode':'live','model':'external Agent (MCP candidate)','sections':sections}
+        return store.mutate(args['project_id'],args['revision'],change)
+    if name=='validate_recap':
+        p=store.get(args['project_id'])
+        if p.get('kind')=='curation':raise ValueError('Expected single-event recap')
+        validate_sections((p.get('engine') or {}).get('sections',[]),{x['id'] for x in p['sources']})
+        return {'machine_passed':True,'human_review_required':True,'release_ready':False,'scope':'Source IDs only; not semantic fidelity or fact verification. Single-event rule changes do not block review/export.'}
     if name=='register_source':return store.register_source(args['source'])
     if name=='list_sources':return [{k:s[k] for k in ['id','url','title','date','occasion','version']} for s in store.list_sources()]
     if name=='get_source':return store.get_source(**args)
@@ -48,11 +79,17 @@ def main():
     args=parser.parse_args();store=Store(Path(args.data_dir)/'shilu.sqlite3')
     for line in sys.stdin:
         try:q=json.loads(line)
-        except ValueError:continue
-        if not isinstance(q,dict) or 'id' not in q:continue
+        except ValueError:
+            print(json.dumps({'jsonrpc':'2.0','id':None,'error':{'code':-32700,'message':'Parse error'}}),flush=True);continue
+        if not isinstance(q,dict) or q.get('jsonrpc')!='2.0' or not isinstance(q.get('method'),str):
+            print(json.dumps({'jsonrpc':'2.0','id':None,'error':{'code':-32600,'message':'Invalid request'}}),flush=True);continue
+        if 'id' not in q:continue
         method=q.get('method');params=q.get('params',{});response={'jsonrpc':'2.0','id':q['id']}
+        if not isinstance(params,dict):
+            response['error']={'code':-32602,'message':'Invalid params'}
+            print(json.dumps(response),flush=True);continue
         if method=='initialize':
-            result={'protocolVersion':params.get('protocolVersion','2024-11-05'),'serverInfo':{'name':'shilu-studio','version':'0.2.0'},'capabilities':{'tools':{}}}
+            result={'protocolVersion':params.get('protocolVersion') if params.get('protocolVersion') in ('2024-11-05','2025-03-26','2025-06-18') else '2025-06-18','serverInfo':{'name':'shilu-studio','version':'0.2.0'},'capabilities':{'tools':{}}}
         elif method=='tools/list':
             result={'tools':[{'name':n,'description':spec[2],'inputSchema':{'type':'object','properties':spec[0],'required':spec[1],'additionalProperties':False}} for n,spec in SPECS.items()]}
         elif method=='tools/call':

@@ -91,3 +91,9 @@ python3 -m unittest discover -s tests -v
 新增本地 stdio MCP，和工作台共用存储。Agent 锁定多场原文、读取内置 skill，提交 original/editorial/heading 类型候选；人在工作台修改、复核和导出。来源变化与规则变化会阻止旧版跨场稿导出。
 详见 [MCP 与跨场专题](docs/MCP.md)。通用导出页不替代既有网站设计系统，不自动部署。
 旧 speech-recap-workshop 数据可用只读迁移器导入，原始数据库不修改，旧审批不沿用。尚未为任何真实数据库执行迁移，也未归档旧仓库。
+
+## 私有共享运行与持续维护
+
+可通过受限 SSH key 将 stdio MCP 接到同一台服务器的内容库；人工工作台只监听回环地址，经独立 SSH 隧道访问。这是单一所有者的可信设备共享，不是多租户公网 HTTP API。安装方式见 [私有 SSH 部署](docs/REMOTE-SSH.md)。
+
+新增单场 Agent 候选接口、个人 profile 绑定、公开来源事务同步、审核后导出记录与一致性备份恢复。实际私人内容、profile、SSH key 和数据库不进入本仓库。旧文章可迁为待复核候选，不继承审核。跨场规则更新会阻断旧稿导出；单场规则目前仅记录快照。

@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh Shilu sources from deployed public projection
+ConditionPathExists=/var/www/html/data/speaking-sources.json
+[Service]
+Type=oneshot
+User=shilu
+Group=shilu
+WorkingDirectory=/opt/shilu-studio/current
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m shilu.sync_public --bundle /var/www/html/data/speaking-sources.json --data-dir /var/lib/shilu-studio
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/shilu-studio
