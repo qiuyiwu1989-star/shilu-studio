@@ -168,9 +168,10 @@ class Store(CurationStore):
     def connect(self):
         return sqlite3.connect(self.path, timeout=15, factory=ClosingConnection)
 
-    def list(self):
+    def list(self, include_archived=False):
         with self.connect() as db:
-            return [json.loads(r[0]) for r in db.execute("SELECT doc FROM projects ORDER BY rowid DESC")]
+            projects = [json.loads(r[0]) for r in db.execute("SELECT doc FROM projects ORDER BY rowid DESC")]
+            return projects if include_archived else [p for p in projects if not p.get("superseded_by")]
 
     def get(self, pid, db=None):
         if db is None:

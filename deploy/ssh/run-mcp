@@ -4,4 +4,5 @@ umask 077
 cd /opt/shilu-studio/current
 export PYTHONDONTWRITEBYTECODE=1
 export SHILU_PROFILE_PATH=/etc/shilu-studio/profile.md
+export SHILU_RECAP_PROFILE_PATH=/etc/shilu-studio/recap-profile.md
 exec /usr/bin/python3 -m shilu.mcp --data-dir /var/lib/shilu-studio

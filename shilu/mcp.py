@@ -1,5 +1,5 @@
 """Local stdio MCP sharing the human workbench database. No review/publish tools."""
-import argparse,json,os,sys
+import argparse,json,os,sys,hashlib
 from pathlib import Path
 from .core import Store, validate_sections
 from .curation import skill_context
@@ -18,6 +18,7 @@ SPECS={
  'get_source':({'source_id':STR,'version':STR},['source_id'],'Read complete source sections, optionally a historical version.'),
  'search_sources':({'query':STR,'limit':{'type':'integer','minimum':1,'maximum':30}},['query'],'Keyword search over registered sources.'),
  'create_curation':({'config':{'type':'object','properties':{k:STR for k in ['title','author','date','occasion','audience','scope_note','anonymize_note']},'required':['title','author'],'additionalProperties':False},'source_ids':{'type':'array','items':STR}},['config','source_ids'],'Create a cross-event project, locking sources and returning mandatory skill_context.'),
+ 'list_projects':({'include_archived':{'type':'boolean'},'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':100}},[],'Discover existing projects before resuming; paginated metadata only, never full drafts.'),
  'get_project':({'project_id':STR},['project_id'],'Resume a project: source/rule snapshots, candidate, human draft and revision.'),
  'submit_curation':({'project_id':STR,'revision':{'type':'integer','minimum':1},'blocks':{'type':'array','items':BLOCK}},['project_id','revision','blocks'],'Submit candidate blocks with optimistic revision control; never overwrite human text.'),
  'validate_curation':({'project_id':STR,'candidate':{'type':'boolean'}},['project_id'],'Validate saved human blocks or candidate against current registered source heads and writing rules.')
@@ -30,7 +31,21 @@ SPECS.update({
  'validate_recap':({'project_id':STR},['project_id'],'Validate candidate source identifiers; human fidelity review is still required.')
 })
 def recap_context():
-    return {'skill':(Path(__file__).parent/'skills/single-event-recap/SKILL.md').read_text(), 'workflow':['create_recap','get_project','submit_recap','validate_recap','human workbench: adopt, save, review, export']}
+    skill=(Path(__file__).parent/'skills/single-event-recap/SKILL.md').read_text()
+    context={'skill':skill,'version':hashlib.sha256(skill.encode()).hexdigest(),
+        'workflow':['list_projects','get_project','create_recap','get_project','submit_recap','validate_recap','human workbench: adopt, save, review, export']}
+    profile_path=os.environ.get('SHILU_RECAP_PROFILE_PATH')
+    if profile_path:
+        try:
+            profile=Path(profile_path).read_text(encoding='utf-8')
+            if not profile.strip():raise ValueError('empty')
+        except (OSError,UnicodeError,ValueError):
+            raise ValueError('RECAP_PROFILE_UNAVAILABLE: configured single-event profile cannot be read or is empty') from None
+        context['profile']=profile
+        context['profile_version']=hashlib.sha256(profile.encode()).hexdigest()
+        context['skill']=skill+'\n\n## Configured single-event profile\n\n'+profile
+        context['version']=hashlib.sha256(context['skill'].encode()).hexdigest()
+    return context
 
 def call(store,name,args):
     if name not in SPECS:raise ValueError('UNKNOWN_TOOL')
@@ -40,11 +55,11 @@ def call(store,name,args):
         typ=props[k]['type']
         if (typ=='string' and not isinstance(v,str)) or (typ=='integer' and type(v)!=int) or (typ=='boolean' and type(v)!=bool) or (typ=='array' and not isinstance(v,list)) or (typ=='object' and not isinstance(v,dict)):
             raise ValueError('INVALID_ARGUMENTS')
-    if name=='get_module_context':return dict(public_sync=freshness(store),recap=recap_context(),skill_context=skill_context(),workflow=['register_source','search_sources','get_source','create_curation','submit_curation','validate_curation','human workbench: save, review, export'],boundary='Local stdio; caller snapshots; no automatic review or publication.')
+    if name=='get_module_context':return dict(public_sync=freshness(store),recap=recap_context(),skill_context=skill_context(),workflow=['list_projects','get_project','register_source','search_sources','get_source','create_curation','submit_curation','validate_curation','human workbench: save, review, export'],boundary='Local stdio; caller snapshots; no automatic review or publication.')
     if name=='create_recap':
         if set(args['config'])-set(CONFIG['properties']):raise ValueError('INVALID_ARGUMENTS')
-        result=store.create(args['config'],args['transcript'])
         context=recap_context()
+        result=store.create(args['config'],args['transcript'])
         context['rules_change_policy']='Snapshot retained; single-event rule changes do not currently block review/export.'
         return store.mutate(result['id'],result['revision'],lambda p:p.update(skill_context=context,candidate_history=[]))
     if name=='submit_recap':
@@ -66,6 +81,17 @@ def call(store,name,args):
     if name=='get_source':return store.get_source(**args)
     if name=='search_sources':return store.search_sources(**args)
     if name=='create_curation':return store.create_curation(**args)
+    if name=='list_projects':
+        offset=args.get('offset',0);limit=args.get('limit',20)
+        if offset<0 or not 1<=limit<=100:raise ValueError('INVALID_ARGUMENTS')
+        projects=store.list(include_archived=args.get('include_archived',False));total=len(projects);items=[]
+        for p in projects[offset:offset+limit]:
+            items.append({'id':p['id'],'title':p.get('config',{}).get('title',''),'kind':p.get('kind','recap'),
+                'revision':p['revision'],'updated_at':p.get('updated_at'),
+                'candidate_available':bool(p.get('engine')),'human_available':bool(p.get('human')),
+                'review_recorded':bool(p.get('review')),'superseded_by':p.get('superseded_by')})
+        more=offset+len(items)<total
+        return {'items':items,'total':total,'has_more':more,'next_offset':offset+len(items) if more else None}
     if name=='get_project':return store.get(args['project_id'])
     if name=='submit_curation':return store.submit_curation(args['project_id'],args['revision'],args['blocks'])
     if name=='validate_curation':

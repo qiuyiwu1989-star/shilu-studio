@@ -7,6 +7,7 @@ Group=shilu-content
 WorkingDirectory=/opt/shilu-studio/current
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=SHILU_PROFILE_PATH=/etc/shilu-studio/profile.md
+Environment=SHILU_RECAP_PROFILE_PATH=/etc/shilu-studio/recap-profile.md
 ExecStart=/usr/bin/python3 -m shilu --port 8775 --data-dir /var/lib/shilu-studio
 Restart=on-failure
 UMask=0077

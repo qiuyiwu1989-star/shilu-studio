@@ -56,3 +56,7 @@ MCP 没有代签复核、导出或发布工具。新候选不会改变已经审�
 `python3 -m shilu.sync_public --bundle /private/speaking-sources.json --data-dir /private/workspace` 事务同步公开快照。它只管理此前由该同步器登记的来源，移除时保留历史版本，其他手工来源不删除。变化会使引用旧版本的跨场稿待复核。模块上下文返回 public_sync，可检查最近同步时间、内容hash和受影响项目。
 
 共享部署、人工审稿入口及备份见 [REMOTE-SSH.md](REMOTE-SSH.md)，审核后导出见 [RELEASE.md](RELEASE.md)。
+
+`list_projects(offset=0, limit=20, include_archived=false)` 提供分页任务发现，不返回全文；历史任务用 include_archived=true 查找，仍可 get_project。显式 superseded_by 仅标记迁移关系，不删除旧稿或沿用旧审批。
+
+个人单场规范可由 `SHILU_RECAP_PROFILE_PATH` 加载；模块上下文 recap 含 skill、version、profile_version，创建单场任务时持久保存。缺失或空配置会阻止创建任务。此配置与跨场 profile 独立，单场当前仅记录规则版本，不自动因规则变化撤销复核。
