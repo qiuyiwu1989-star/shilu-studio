@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shilu-studio"
-version = "0.1.0"
+version = "0.2.0"
 description = "Portable, source-grounded speech recap workbench"
 requires-python = ">=3.9"
 license = {text = "MIT"}
@@ -12,9 +12,10 @@ dependencies = []
 
 [project.scripts]
 shilu = "shilu.__main__:main"
+shilu-mcp = "shilu.mcp:main"
 
 [tool.setuptools.packages.find]
 include = ["shilu*"]
 
 [tool.setuptools.package-data]
-shilu = ["static/*"]
+shilu = ["static/*", "skills/*/SKILL.md"]

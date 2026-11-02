@@ -105,6 +105,10 @@ class Handler(BaseHTTPRequestHandler):
             rev = b["revision"]
             if action == "save":
                 p = store.save(pid, rev, b["config"], b["sections"])
+            elif action == "save-curation":
+                p = store.save_curation(pid, rev, b["config"], b["blocks"])
+            elif action == "adopt-curation":
+                p = store.adopt_curation(pid, rev)
             elif action == "generate":
                 p = store.draft(pid, rev, b["mode"])
             elif action == "review":
@@ -126,10 +130,12 @@ class Handler(BaseHTTPRequestHandler):
                     z.writestr("index.html", article(p))
                     z.writestr("article.md", markdown(p))
                     # Public delivery contains only edited text, never source transcripts or reviewer identity.
-                    z.writestr("article.json", json.dumps({"schema_version": 1,
+                    from .curation import public_document
+                    public = public_document(p) if p.get("kind")=="curation" else {"schema_version": 1,
                         "title": p["config"]["title"], "author": p["config"]["author"],
                         "date": p["config"]["date"], "occasion": p["config"]["occasion"],
-                        "sections": [{"title": s["title"], "body": s["body"]} for s in p["human"]]}, ensure_ascii=False, indent=2))
+                        "sections": [{"title": s["title"], "body": s["body"]} for s in p["human"]]}
+                    z.writestr("article.json", json.dumps(public, ensure_ascii=False, indent=2))
                 return self.reply(out.getvalue(), kind="application/zip", filename="shilu-article.zip")
             else:
                 return self.reply({"error": "Unknown action"}, 404)
