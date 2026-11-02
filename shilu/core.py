@@ -14,6 +14,8 @@ from urllib.error import HTTPError
 from .config import model_config
 
 
+from .curation import CurationStore, review_payload
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -65,6 +67,7 @@ def scan(sections):
     flags = []
     for kind, pattern in [
         ("疑似电话或身份证", r"(?<!\d)(?:1[3-9]\d{9}|\d{17}[\dXx])(?!\d)"),
+        ("邮箱", r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}"),
         ("机构名称", r"[一-龥]{2,12}(?:有限公司|集团|银行)"),
         ("身份指代", r"总理|省长|市长|书记|局长|未成年人"),
         ("标点", r"「|」|\.\.\.|--"),
@@ -146,7 +149,7 @@ class Conflict(ValueError):
     pass
 
 
-class Store:
+class Store(CurationStore):
     def __init__(self, path):
         self.path = str(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -170,6 +173,7 @@ class Store:
         return json.loads(row[0])
 
     def create(self, config, transcript, imported=None):
+        if imported and imported.get('kind')=='curation':return self.import_curation(imported)
         config = validate_config(config)
         if not isinstance(transcript, str) or not 20 <= len(transcript.strip()) <= 80000:
             raise ValueError("逐字稿长度须为 20–80000 字；长稿请按场次拆分")
@@ -203,6 +207,7 @@ class Store:
 
     def save(self, pid, revision, config, sections):
         def change(p):
+            if p.get('kind')=='curation':raise ValueError('跨场稿请通过 MCP 提交候选，再在工作台采纳')
             c = validate_config(config)
             s = validate_sections(sections, {x["id"] for x in p["sources"]})
             if p["human"]:
@@ -212,6 +217,7 @@ class Store:
 
     def draft(self, pid, revision, mode):
         snapshot = self.get(pid)
+        if snapshot.get('kind')=='curation':raise ValueError('跨场稿请通过 MCP 提交候选')
         if snapshot["revision"] != revision:
             raise Conflict("稿件已更新，请重新载入")
         result = generate(snapshot, mode)
@@ -223,18 +229,25 @@ class Store:
         def change(p):
             if not p["human"]:
                 raise ValueError("先保存人工正文，再复核")
-            p["review"] = {"by": reviewer.strip(), "at": now(), "hash": fingerprint([p["config"], p["human"]])}
+            if p.get('kind')=='curation' and not self.validate_curation(p)['machine_passed']:
+                raise ValueError('跨场来源或规则需重新核验')
+            p["review"] = {"by": reviewer.strip(), "at": now(), "hash": fingerprint(review_payload(p))}
         return self.mutate(pid, revision, change)
 
     def export(self, pid, revision):
         def change(p):
-            if not p["review"] or p["review"]["hash"] != fingerprint([p["config"], p["human"]]):
+            if p.get('kind')=='curation' and not self.validate_curation(p)['machine_passed']:
+                raise ValueError('跨场来源或规则需重新核验')
+            if not p["review"] or p["review"]["hash"] != fingerprint(review_payload(p)):
                 raise ValueError("当前版本尚未人工复核")
             p["exports"].append({"at": now(), "hash": p["review"]["hash"], "status": "exported"})
         return self.mutate(pid, revision, change)
 
 
 def article(p):
+    if p.get('kind')=='curation':
+        from .curation import curation_html
+        return curation_html(p)
     e = html.escape
     c = p["config"]
     sections = p["human"]
@@ -257,6 +270,9 @@ h1{font-size:2.3em;line-height:1.3}h2{margin-top:2.3em}nav{padding:20px;border:1
 
 
 def markdown(p):
+    if p.get('kind')=='curation':
+        from .curation import curation_markdown
+        return curation_markdown(p)
     c = p["config"]
     return "# " + c["title"] + "\n\n" + " · ".join(c[k] for k in ("author", "date", "occasion") if c[k]) + \
         "\n\n" + "\n\n".join("## " + s["title"] + "\n\n" + s["body"] for s in p["human"])

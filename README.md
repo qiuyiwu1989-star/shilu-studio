@@ -4,7 +4,7 @@
 
 从 [qiuyiwu.com](https://qiuyiwu.com/) 的实录制作流程提炼而来。适用于演讲、课程、访谈和分享会。保留讲者原意与真实细节，整理口语、章节和阅读结构；所有 AI 初稿均需人工复核。
 
-这是 **v0.1 单人、本机应用**，不是多人公网服务。Python 3.9+，标准库即可运行，无需安装第三方依赖。
+这是 **v0.2 单人、本机应用**，不是多人公网服务。Python 3.9+，标准库即可运行，无需安装第三方依赖。
 
 ```sh
 git clone https://github.com/qiuyiwu1989-star/shilu-studio.git
@@ -85,3 +85,9 @@ python3 -m unittest discover -s tests -v
 ## 许可
 
 代码采用 [MIT License](LICENSE)。仓库只包含通用实现与虚构示例，不包含 qiuyiwu.com 的私人逐字稿、客户信息、课件、站点数据和生产凭据。原站文章与第三方素材不因本代码开源而改变许可。
+
+
+## 跨场专题与 Agent 接入
+新增本地 stdio MCP，和工作台共用存储。Agent 锁定多场原文、读取内置 skill，提交 original/editorial/heading 类型候选；人在工作台修改、复核和导出。来源变化与规则变化会阻止旧版跨场稿导出。
+详见 [MCP 与跨场专题](docs/MCP.md)。通用导出页不替代既有网站设计系统，不自动部署。
+旧 speech-recap-workshop 数据可用只读迁移器导入，原始数据库不修改，旧审批不沿用。尚未为任何真实数据库执行迁移，也未归档旧仓库。

@@ -35,6 +35,7 @@ function intake() {
 }
 async function load(id) {const r=await api('/api/projects/'+id); current=r.project;dirty=false;render(r.scan);await list();}
 function render(scan) {
+  if(current.kind==='curation')return renderCuration(scan);
   const p=current, sections=p.human.length?p.human:(p.engine?.sections||[]);
   $('work').innerHTML=`<div class="step">02 / 整理与复核</div><h1>${esc(p.config.title)}</h1><span class="tag">${p.review?'当前正文已复核':p.human.length?'人工正文已保存':'待整理'}</span> <span class="quiet">版本 ${p.revision} · 本机保存</span>
   <details class="card"><summary>场次信息与整理要求</summary>${fields(p.config)}</details>
@@ -65,3 +66,24 @@ $('new').onclick=()=>{if(!busy&&leave()){intake();run(list);notify('');}};
 $('import').onchange=e=>run(async()=>{if(!leave())return;const file=e.target.files[0];if(!file)return;const r=await api('/api/import',{project:JSON.parse(await file.text())});await load(r.project.id);notify('已导入为新稿件；原稿与人工正文保留，需要重新复核。');});
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 run(async()=>{const s=await api('/api/session');token=s.token;modelReady=s.model_ready;modelName=s.model;intake();await list();});
+
+function renderCuration(scan) {
+  const p=current, blocks=p.human_blocks.length?p.human_blocks:(p.engine?.blocks||[]);
+  $('work').innerHTML='<div class="step">跨场专题 / 整理与复核</div><h1>'+esc(p.config.title)+'</h1><p class="quiet">版本 '+p.revision+' · Agent 候选稿与人工正文分别保存</p><details class="card"><summary>文章信息</summary>'+fields(p.config)+'</details>'+
+    (p.engine?'<button id="adopt-curation">将最新候选载入编辑区</button>':'<p>等待 Agent 通过 MCP 提交候选稿。</p>')+
+    '<div class="card"><h2>连续正文</h2><p class="quiet">编辑衔接可以修改；原话须与所引章节匹配。章节结构与来源由 MCP 提交。</p><div id="curation-blocks"></div><button id="save-curation">保存人工正文</button><button id="preview">预览已保存正文</button></div>'+
+    '<details class="card"><summary>对照完整来源</summary>'+p.source_bundle.map(s=>'<h3>'+esc(s.title)+'</h3>'+s.sections.map(x=>'<div class="source"><b>'+esc(x.anchor)+'</b> '+esc(x.text)+'</div>').join('')).join('')+'</details>'+
+    '<div class="card"><h2>检查提示</h2><p>'+esc(scan.flags.map(f=>f.kind+'：'+f.text).join('；')||'规则未发现疑点，仍须人工复核。')+'</p></div>'+
+    '<div class="card"><h2>人工复核与交付</h2><label>复核人<input id="reviewer" value="'+esc(p.review?.by||'')+'"></label><label><input type="checkbox" id="confirm-review">已核对原话、衔接、出处与脱敏</label><button id="review">确认当前版本</button><button id="export">导出文章包</button><button id="backup">私人迁移包</button></div><div id="preview-area"></div>';
+  let edited=structuredClone(blocks);
+  function draw(){ $('curation-blocks').innerHTML=edited.map((b,i)=>'<label>'+esc({heading:'章节',original:'原话 ['+b.citation+']',editorial:'编辑衔接'}[b.type])+'<textarea data-block="'+i+'">'+esc(b.text)+'</textarea></label>').join(''); }
+  function collectBlocks(){return edited.map((b,i)=>({...b,text:$('curation-blocks').querySelector('[data-block="'+i+'"]').value}));}
+  draw();
+  $('work').oninput=e=>{if(!['reviewer','confirm-review'].includes(e.target.id))dirty=true;};
+  if($('adopt-curation'))$('adopt-curation').onclick=()=>{if(!leave())return;edited=structuredClone(p.engine.blocks);draw();dirty=true;notify('候选载入编辑区，保存后才替换人工正文。');};
+  $('save-curation').onclick=()=>run(async()=>{await api('/api/projects/'+p.id+'/save-curation',{revision:p.revision,config:config(),blocks:collectBlocks()});await load(p.id);notify('人工正文已保存，需重新复核。');});
+  $('review').onclick=()=>run(async()=>{requireSaved();await api('/api/projects/'+p.id+'/review',{revision:p.revision,reviewer:$('reviewer').value,confirmed:$('confirm-review').checked});await load(p.id);notify('当前版本已复核。');});
+  $('preview').onclick=()=>run(async()=>{requireSaved();if(!p.human.length)throw new Error('请先保存人工正文');const r=await api('/api/projects/'+p.id+'/preview',{revision:p.revision},true);const f=document.createElement('iframe');f.title='跨场专题预览';f.setAttribute('sandbox','');f.srcdoc=await r.text();$('preview-area').replaceChildren(f);});
+  $('export').onclick=()=>run(async()=>{requireSaved();const r=await api('/api/projects/'+p.id+'/export',{revision:p.revision},true);download(await r.blob(),'shilu-article.zip');await load(p.id);notify('文章包已导出，未发布到网站。');});
+  $('backup').onclick=()=>run(async()=>{requireSaved();const r=await api('/api/projects/'+p.id+'/backup',{revision:p.revision},true);download(await r.blob(),'shilu-project.json');});
+}
