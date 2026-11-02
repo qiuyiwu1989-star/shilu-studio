@@ -1,0 +1,13 @@
+[Unit]
+Description=Consistent private Shilu SQLite backup
+[Service]
+Type=oneshot
+User=shilu
+Group=shilu
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/shilu-studio/current/deploy/ssh/backup
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/shilu-studio

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+umask 077
+cd /opt/shilu-studio/current
+mkdir -p /var/lib/shilu-studio/backups
+/usr/bin/python3 -m shilu.backup backup --source /var/lib/shilu-studio/shilu.sqlite3 --target "/var/lib/shilu-studio/backups/shilu-$(date -u +%Y%m%dT%H%M%SZ).sqlite3"
+# Retention applies only to backups created by this script; never the live DB.
+find /var/lib/shilu-studio/backups -maxdepth 1 -name 'shilu-*.sqlite3' -type f -mtime +7 -delete
