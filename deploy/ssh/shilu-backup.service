@@ -2,8 +2,8 @@
 Description=Consistent private Shilu SQLite backup
 [Service]
 Type=oneshot
-User=shilu
-Group=shilu
+User=shilu-content
+Group=shilu-content
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/shilu-studio/current/deploy/ssh/backup
 UMask=0077

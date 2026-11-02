@@ -2,8 +2,8 @@
 Description=Private Shilu review workbench (SSH tunnel only)
 After=network.target
 [Service]
-User=shilu
-Group=shilu
+User=shilu-content
+Group=shilu-content
 WorkingDirectory=/opt/shilu-studio/current
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=SHILU_PROFILE_PATH=/etc/shilu-studio/profile.md

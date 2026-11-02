@@ -149,6 +149,15 @@ class Conflict(ValueError):
     pass
 
 
+class ClosingConnection(sqlite3.Connection):
+    """Commit or roll back on exit, then always release the database handle."""
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class Store(CurationStore):
     def __init__(self, path):
         self.path = str(path)
@@ -157,7 +166,7 @@ class Store(CurationStore):
             db.execute("CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, doc TEXT NOT NULL)")
 
     def connect(self):
-        return sqlite3.connect(self.path, timeout=15)
+        return sqlite3.connect(self.path, timeout=15, factory=ClosingConnection)
 
     def list(self):
         with self.connect() as db:

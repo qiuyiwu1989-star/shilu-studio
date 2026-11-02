@@ -2,7 +2,7 @@
 
 This deployment is for one owner's trusted devices, not a multi-tenant public API. The client launches `ssh -T` as its stdio MCP subprocess. SSH authenticates the device. There is no public HTTP MCP endpoint; clients that accept only a remote URL need a separate future HTTP transport.
 
-Install application releases read-only under `/opt/shilu-studio/releases/<commit>`, point `current` at the chosen release. Keep the database in `/var/lib/shilu-studio` (0700), profile in `/etc/shilu-studio/profile.md`. Run as a dedicated `shilu` user. Do not expose the review app through public nginx.
+Install application releases read-only under `/opt/shilu-studio/releases/<commit>`, point `current` at the chosen release. Keep the database in `/var/lib/shilu-studio` (0700), profile in `/etc/shilu-studio/profile.md`. Run as a dedicated `shilu-content` user. Do not expose the review app through public nginx.
 
 For each device generate a distinct SSH key, and authorize its public key with:
 
@@ -12,7 +12,7 @@ The forced command ignores shell commands; no PTY, forwarding or arbitrary shell
 
 MCP client:
 
-    {"command":"ssh","args":["-T","-o","BatchMode=yes","-o","IdentitiesOnly=yes","-i","/private/device-key","shilu@YOUR_HOST"]}
+    {"command":"ssh","args":["-T","-o","BatchMode=yes","-o","IdentitiesOnly=yes","-i","/private/device-key","shilu-content@YOUR_HOST"]}
 
 Human review uses a separate administrator-authorized tunnel:
 

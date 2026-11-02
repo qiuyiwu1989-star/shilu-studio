@@ -3,8 +3,8 @@ Description=Refresh Shilu sources from deployed public projection
 ConditionPathExists=/var/www/html/data/speaking-sources.json
 [Service]
 Type=oneshot
-User=shilu
-Group=shilu
+User=shilu-content
+Group=shilu-content
 WorkingDirectory=/opt/shilu-studio/current
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 -m shilu.sync_public --bundle /var/www/html/data/speaking-sources.json --data-dir /var/lib/shilu-studio
