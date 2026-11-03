@@ -103,7 +103,7 @@ def generate(project, mode):
         raise ValueError("请配置 SHILU_API_KEY、SHILU_BASE_URL 和 SHILU_MODEL")
     if not base.startswith("https://"):
         raise ValueError("模型服务地址必须使用 HTTPS")
-    payload = {"model": model, "messages": [{"role": "system", "content": SYSTEM},
+    payload = {"model": model, "messages": [{"role": "system", "content": SYSTEM + "\n\n" + project.get("skill_context", {}).get("skill", "")},
         {"role": "user", "content": json.dumps({"config": project["config"], "sources": project["sources"]}, ensure_ascii=False)}],
         "max_tokens": cfg["max_tokens"]}
     if cfg["effort"]:
@@ -187,10 +187,12 @@ class Store(CurationStore):
         config = validate_config(config)
         if not isinstance(transcript, str) or not 20 <= len(transcript.strip()) <= 80000:
             raise ValueError("逐字稿长度须为 20–80000 字；长稿请按场次拆分")
+        from .recap_rules import recap_context
+        context = recap_context()
         src = sources(transcript)
         if len(src) > 200:
             raise ValueError("原稿最多 200 段，请合并短行或按场次拆分")
-        p = {"schema_version": 1, "id": uuid.uuid4().hex, "revision": 1, "config": config,
+        p = {"skill_context": context, "schema_version": 1, "id": uuid.uuid4().hex, "revision": 1, "config": config,
              "transcript": transcript, "sources": src, "engine": None, "human": [],
              "review": None, "exports": [], "history": [], "created_at": now(), "updated_at": now()}
         if imported:
@@ -230,13 +232,24 @@ class Store(CurationStore):
         if snapshot.get('kind')=='curation':raise ValueError('跨场稿请通过 MCP 提交候选')
         if snapshot["revision"] != revision:
             raise Conflict("稿件已更新，请重新载入")
+        self.check_recap_rules(snapshot)
         result = generate(snapshot, mode)
         return self.mutate(pid, revision, lambda p: p.update(engine=result))
+
+    def check_recap_rules(self, project):
+        if project.get("kind") == "curation":
+            return
+        from .recap_rules import recap_context
+        current = recap_context()
+        saved = project.get("skill_context", {})
+        if saved.get("version") != current["version"]:
+            raise ValueError("单场规则快照缺失或已变化；请按当前规则新建候选并重新人工复核")
 
     def review(self, pid, revision, reviewer):
         if not isinstance(reviewer, str) or not reviewer.strip():
             raise ValueError("请填写复核人")
         def change(p):
+            self.check_recap_rules(p)
             if not p["human"]:
                 raise ValueError("先保存人工正文，再复核")
             if p.get('kind')=='curation' and not self.validate_curation(p)['machine_passed']:
@@ -246,6 +259,7 @@ class Store(CurationStore):
 
     def export(self, pid, revision):
         def change(p):
+            self.check_recap_rules(p)
             if p.get('kind')=='curation' and not self.validate_curation(p)['machine_passed']:
                 raise ValueError('跨场来源或规则需重新核验')
             if not p["review"] or p["review"]["hash"] != fingerprint(review_payload(p)):

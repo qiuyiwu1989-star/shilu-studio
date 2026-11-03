@@ -1,8 +1,9 @@
 """Local stdio MCP sharing the human workbench database. No review/publish tools."""
-import argparse,json,os,sys,hashlib
+import argparse,json,os,sys
 from pathlib import Path
 from .core import Store, validate_sections
 from .curation import skill_context
+from .recap_rules import recap_context
 from .sync_public import freshness
 
 STR={'type':'string'}
@@ -30,22 +31,6 @@ SPECS.update({
  'submit_recap':({'project_id':STR,'revision':{'type':'integer','minimum':1},'sections':{'type':'array','items':SECTION}},['project_id','revision','sections'],'Submit an Agent candidate only; human draft and review remain unchanged.'),
  'validate_recap':({'project_id':STR},['project_id'],'Validate candidate source identifiers; human fidelity review is still required.')
 })
-def recap_context():
-    skill=(Path(__file__).parent/'skills/single-event-recap/SKILL.md').read_text()
-    context={'skill':skill,'version':hashlib.sha256(skill.encode()).hexdigest(),
-        'workflow':['list_projects','get_project','create_recap','get_project','submit_recap','validate_recap','human workbench: adopt, save, review, export']}
-    profile_path=os.environ.get('SHILU_RECAP_PROFILE_PATH')
-    if profile_path:
-        try:
-            profile=Path(profile_path).read_text(encoding='utf-8')
-            if not profile.strip():raise ValueError('empty')
-        except (OSError,UnicodeError,ValueError):
-            raise ValueError('RECAP_PROFILE_UNAVAILABLE: configured single-event profile cannot be read or is empty') from None
-        context['profile']=profile
-        context['profile_version']=hashlib.sha256(profile.encode()).hexdigest()
-        context['skill']=skill+'\n\n## Configured single-event profile\n\n'+profile
-        context['version']=hashlib.sha256(context['skill'].encode()).hexdigest()
-    return context
 
 def call(store,name,args):
     if name not in SPECS:raise ValueError('UNKNOWN_TOOL')
@@ -60,7 +45,7 @@ def call(store,name,args):
         if set(args['config'])-set(CONFIG['properties']):raise ValueError('INVALID_ARGUMENTS')
         context=recap_context()
         result=store.create(args['config'],args['transcript'])
-        context['rules_change_policy']='Snapshot retained; single-event rule changes do not currently block review/export.'
+        context['rules_change_policy']='Rule changes block review/export; create a new candidate under current rules.'
         return store.mutate(result['id'],result['revision'],lambda p:p.update(skill_context=context,candidate_history=[]))
     if name=='submit_recap':
         def change(p):
@@ -74,8 +59,9 @@ def call(store,name,args):
     if name=='validate_recap':
         p=store.get(args['project_id'])
         if p.get('kind')=='curation':raise ValueError('Expected single-event recap')
+        store.check_recap_rules(p)
         validate_sections((p.get('engine') or {}).get('sections',[]),{x['id'] for x in p['sources']})
-        return {'machine_passed':True,'human_review_required':True,'release_ready':False,'scope':'Source IDs only; not semantic fidelity or fact verification. Single-event rule changes do not block review/export.'}
+        return {'machine_passed':True,'human_review_required':True,'release_ready':False,'scope':'Source IDs only; not semantic fidelity or fact verification. Rule freshness checked; changes block review/export.'}
     if name=='register_source':return store.register_source(args['source'])
     if name=='list_sources':return [{k:s[k] for k in ['id','url','title','date','occasion','version']} for s in store.list_sources()]
     if name=='get_source':return store.get_source(**args)

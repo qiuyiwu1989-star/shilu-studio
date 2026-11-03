@@ -49,7 +49,7 @@ MCP 没有代签复核、导出或发布工具。新候选不会改变已经审�
 
 ## 单场 Agent 候选
 
-`get_module_context.recap` 提供单场 skill。`create_recap(config, transcript)` 保存原始逐字稿和规则快照；`get_project` 可接手；`submit_recap(project_id, revision, sections)` 只写候选，保留旧候选及人工稿；`validate_recap` 检查来源编号。sections 含 title、body、source_ids。创建后使用返回 revision，不猜测固定初始值。单场目前保留规则快照但规则更新不自动阻断复核/导出；跨场稿有规则及来源变化阻断。
+`get_module_context.recap` 提供单场 skill。`create_recap(config, transcript)` 保存原始逐字稿和规则快照；`get_project` 可接手；`submit_recap(project_id, revision, sections)` 只写候选，保留旧候选及人工稿；`validate_recap` 检查来源编号。sections 含 title、body、source_ids。创建后使用返回 revision，不猜测固定初始值。单场规则快照缺失或过期时，验证、生成、复核和导出均阻断；跨场稿另有来源变化阻断。
 
 ## 公开来源更新
 
@@ -59,4 +59,10 @@ MCP 没有代签复核、导出或发布工具。新候选不会改变已经审�
 
 `list_projects(offset=0, limit=20, include_archived=false)` 提供分页任务发现，不返回全文；历史任务用 include_archived=true 查找，仍可 get_project。显式 superseded_by 仅标记迁移关系，不删除旧稿或沿用旧审批。
 
-个人单场规范可由 `SHILU_RECAP_PROFILE_PATH` 加载；模块上下文 recap 含 skill、version、profile_version，创建单场任务时持久保存。缺失或空配置会阻止创建任务。此配置与跨场 profile 独立，单场当前仅记录规则版本，不自动因规则变化撤销复核。
+个人单场规范可由 `SHILU_RECAP_PROFILE_PATH` 加载；模块上下文 recap 含 skill、version、profile_version，创建单场任务时持久保存。缺失或空配置会阻止创建任务。此配置与跨场 profile 独立，单场规则变化后保留历史复核记录，但禁止继续复核或沿用旧复核导出；恢复方式见下文。
+
+### Single-event rule freshness
+
+All newly created single-event projects, including workbench projects, retain the current generic skill and configured private profile snapshot. Review, export, and `validate_recap` reject a missing snapshot or a version different from the current rules. An unreadable configured profile also fails closed. Existing human text and review history are retained; rejection does not modify the project.
+
+Legacy single-event projects without a snapshot cannot be grandfathered into approval. Read the current module context, create a new recap using the original transcript and configuration, submit a candidate under those rules, then adopt/save and complete human review again. Rule changes use the same recovery path. Do not replace the old snapshot or copy its review record to bypass this check. Cross-event review behavior is unchanged.
